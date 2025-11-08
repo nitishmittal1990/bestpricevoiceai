@@ -7,21 +7,21 @@
   - Set up directory structure: src/services, src/models, src/utils, src/config
   - _Requirements: All requirements depend on proper project setup_
 
-- [ ] 2. Implement core data models and types
-  - [ ] 2.1 Create TypeScript interfaces for data models
+- [x] 2. Implement core data models and types
+  - [x] 2.1 Create TypeScript interfaces for data models
     - Write ProductQuery, Specifications, SearchResult, ComparisonResult interfaces
     - Create ConversationState, SessionState, Message types
     - Define ProductCategory enum and ConversationState enum
     - _Requirements: 2.1, 2.2, 3.1, 3.2, 3.3, 4.1_
   
-  - [ ] 2.2 Create validation utilities for data models
+  - [x] 2.2 Create validation utilities for data models
     - Write validation functions for ProductQuery completeness
     - Implement specification relevance validation by product category
     - Create price and currency validation utilities
     - _Requirements: 2.3, 3.2_
 
-- [ ] 3. Implement Speech-to-Text service
-  - [ ] 3.1 Create STTService class with ElevenLabs Speech-to-Text integration
+- [x] 3. Implement Speech-to-Text service
+  - [x] 3.1 Create STTService class with ElevenLabs Speech-to-Text integration
     - Implement transcribe() method with audio buffer handling
     - Add support for multiple audio formats (WAV, MP3, WebM)
     - Implement confidence scoring and language detection

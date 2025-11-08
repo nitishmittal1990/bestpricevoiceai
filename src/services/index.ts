@@ -1,0 +1,1 @@
+export { STTService } from './STTService';
