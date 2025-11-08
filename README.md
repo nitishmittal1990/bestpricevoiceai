@@ -96,8 +96,11 @@ The TTSService provides natural-sounding voice synthesis using ElevenLabs TTS AP
 - **Multiple Formats**: Support for MP3, WAV, and Opus audio formats
 - **Error Handling**: Automatic retry logic with exponential backoff
 - **Voice Selection**: Access to ElevenLabs voice library
+- **Response Caching**: Intelligent caching of frequently used phrases for improved performance
+- **Cache Pre-warming**: Pre-load common phrases at startup for instant responses
 
-Example usage:
+#### Basic Usage
+
 ```typescript
 import { TTSService } from './services/TTSService';
 
@@ -115,6 +118,46 @@ const result = await tts.synthesize(
 // Get available voices
 const voices = await tts.getAvailableVoices();
 ```
+
+#### Caching Features
+
+The TTSService includes an intelligent caching layer that significantly improves performance for repeated phrases:
+
+```typescript
+// Initialize with custom cache settings
+const tts = new TTSService(
+  true,              // Enable caching
+  100,               // Max 100 cache entries
+  24 * 60 * 60 * 1000 // 24 hour TTL
+);
+
+// Pre-warm cache with common phrases at startup
+await tts.prewarmCache();
+
+// Get cache statistics
+const stats = tts.getCacheStats();
+console.log(`Hit rate: ${stats.hitRate}%`);
+console.log(`Cache size: ${stats.size} entries`);
+
+// Clear cache if needed
+tts.clearCache();
+
+// Invalidate specific entry
+tts.invalidateCache('specific text to invalidate');
+
+// Clear only expired entries
+tts.clearExpiredCache();
+
+// Check memory usage
+const memoryBytes = tts.getCacheMemoryUsage();
+```
+
+**Cache Benefits:**
+- Reduces API calls and costs
+- Improves response latency (typically 10-100x faster for cached responses)
+- Automatic eviction of least-used entries when cache is full
+- Case-insensitive matching for better hit rates
+- Separate caching for different voices and formats
 
 ### Speech-to-Text (STTService)
 

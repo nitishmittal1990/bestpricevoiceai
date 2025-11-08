@@ -118,4 +118,105 @@ describe('TTSService', () => {
       expect(formats).toEqual(['mp3', 'wav', 'opus']);
     });
   });
+
+  describe('caching', () => {
+    it('should cache synthesized audio', async () => {
+      const text = 'Hello world';
+
+      // First call - should synthesize
+      const result1 = await ttsService.synthesize(text);
+
+      // Second call - should use cache
+      const result2 = await ttsService.synthesize(text);
+
+      expect(result1.data.toString()).toBe(result2.data.toString());
+
+      const stats = ttsService.getCacheStats();
+      expect(stats.hits).toBe(1);
+      expect(stats.misses).toBe(1);
+    });
+
+    it('should cache different voices separately', async () => {
+      const text = 'Hello';
+
+      await ttsService.synthesize(text, { voice: 'voice1' });
+      await ttsService.synthesize(text, { voice: 'voice2' });
+
+      const stats = ttsService.getCacheStats();
+      expect(stats.size).toBe(2);
+    });
+
+    it('should clear cache', async () => {
+      await ttsService.synthesize('Test 1');
+      await ttsService.synthesize('Test 2');
+
+      ttsService.clearCache();
+
+      const stats = ttsService.getCacheStats();
+      expect(stats.size).toBe(0);
+    });
+
+    it('should invalidate specific cache entry', async () => {
+      const text = 'Test text';
+
+      await ttsService.synthesize(text);
+      const invalidated = ttsService.invalidateCache(text);
+
+      expect(invalidated).toBe(true);
+
+      const stats = ttsService.getCacheStats();
+      expect(stats.size).toBe(0);
+    });
+
+    it('should clear expired cache entries', async () => {
+      // Create service with very short TTL for testing
+      const shortTtlService = new TTSService(true, 100, 100);
+
+      await shortTtlService.synthesize('Test');
+
+      // Wait for expiration
+      await new Promise(resolve => setTimeout(resolve, 150));
+
+      const removed = shortTtlService.clearExpiredCache();
+      expect(removed).toBe(1);
+    });
+
+    it('should report cache memory usage', async () => {
+      await ttsService.synthesize('Test 1');
+      await ttsService.synthesize('Test 2');
+
+      const memoryUsage = ttsService.getCacheMemoryUsage();
+      expect(memoryUsage).toBeGreaterThan(0);
+    });
+
+    it('should get cache statistics', async () => {
+      await ttsService.synthesize('Test 1');
+      await ttsService.synthesize('Test 1'); // cache hit
+      await ttsService.synthesize('Test 2');
+
+      const stats = ttsService.getCacheStats();
+
+      expect(stats.hits).toBe(1);
+      expect(stats.misses).toBe(2);
+      expect(stats.size).toBe(2);
+      expect(stats.hitRate).toBeGreaterThan(0);
+    });
+  });
+
+  describe('prewarmCache', () => {
+    it('should pre-warm cache with common phrases', async () => {
+      const warmed = await ttsService.prewarmCache();
+
+      expect(warmed).toBeGreaterThan(0);
+
+      const stats = ttsService.getCacheStats();
+      expect(stats.size).toBeGreaterThan(0);
+    });
+
+    it('should use specified voice and format for pre-warming', async () => {
+      const warmed = await ttsService.prewarmCache('custom-voice', 'wav');
+
+      expect(warmed).toBeGreaterThan(0);
+    });
+  });
 });

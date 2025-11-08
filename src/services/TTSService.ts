@@ -3,6 +3,7 @@ import { config } from '../config';
 import { SynthesizeOptions } from '../types';
 import { logger } from '../utils/logger';
 import { Readable } from 'stream';
+import { TTSCache } from './TTSCache';
 
 /**
  * Audio buffer interface for TTS output
@@ -23,6 +24,7 @@ export class TTSService {
   private readonly MAX_RETRIES = 3;
   private readonly RETRY_DELAY_MS = 1000;
   private readonly SUPPORTED_FORMATS = ['mp3', 'wav', 'opus'];
+  private cache: TTSCache;
   
   // Indian e-commerce platform names for proper pronunciation
   private readonly PLATFORM_PRONUNCIATIONS: Record<string, string> = {
@@ -40,7 +42,7 @@ export class TTSService {
     'Vijay Sales': 'Vijay Sales',
   };
 
-  constructor() {
+  constructor(enableCache: boolean = true, cacheMaxSize?: number, cacheTtlMs?: number) {
     this.client = new ElevenLabsClient({
       apiKey: config.elevenlabs.apiKey,
     });
@@ -51,9 +53,13 @@ export class TTSService {
     // - "21m00Tcm4TlvDq8ikWAM" (Rachel - warm, friendly)
     this.DEFAULT_VOICE_ID = config.elevenlabs.defaultVoiceId || 'pNInz6obpgDQGcFmaJgB';
     
+    // Initialize cache
+    this.cache = new TTSCache(cacheMaxSize, cacheTtlMs);
+    
     logger.info('TTSService initialized with ElevenLabs TTS API', {
       voiceId: this.DEFAULT_VOICE_ID,
       model: config.elevenlabs.ttsModel,
+      cacheEnabled: enableCache,
     });
   }
 
@@ -80,14 +86,25 @@ export class TTSService {
         throw new Error('Text is empty or invalid');
       }
 
-      // Preprocess text for better pronunciation
-      const processedText = this.preprocessText(text);
-
       // Validate format
       const format = options?.format || 'mp3';
       if (!this.SUPPORTED_FORMATS.includes(format)) {
         throw new Error(`Unsupported audio format: ${format}. Use mp3, wav, or opus.`);
       }
+
+      // Check cache first
+      const cachedAudio = this.cache.get(text, options?.voice, format);
+      if (cachedAudio) {
+        logger.info('Text-to-speech synthesis served from cache', {
+          textLength: text.length,
+          audioSize: cachedAudio.data.length,
+          duration: Date.now() - startTime,
+        });
+        return cachedAudio;
+      }
+
+      // Preprocess text for better pronunciation
+      const processedText = this.preprocessText(text);
 
       // Synthesize with retry logic
       const audioData = await this.synthesizeWithRetry(
@@ -103,10 +120,14 @@ export class TTSService {
         duration,
       };
 
+      // Cache the result (especially for common phrases)
+      this.cache.set(text, result, options?.voice, format);
+
       logger.info('Text-to-speech synthesis completed successfully', {
         textLength: text.length,
         audioSize: audioData.length,
         duration: result.duration,
+        cached: this.cache.isCommonPhrase(text),
       });
 
       return result;
@@ -315,5 +336,73 @@ export class TTSService {
       voice: voiceId || this.DEFAULT_VOICE_ID,
       format: 'mp3',
     });
+  }
+
+  /**
+   * Pre-warm cache with common phrases
+   * Useful to call during service initialization
+   * @param voice - Voice ID to use for pre-warming
+   * @param format - Audio format to use
+   * @returns Number of phrases successfully cached
+   */
+  async prewarmCache(voice?: string, format?: string): Promise<number> {
+    const synthesizeFunc = async (text: string, v?: string, f?: string) => {
+      // Bypass cache for pre-warming
+      const processedText = this.preprocessText(text);
+      const audioData = await this.synthesizeWithRetry(processedText, {
+        voice: v,
+        format: f as 'mp3' | 'wav' | 'opus',
+      });
+
+      return {
+        data: audioData,
+        format: f || 'mp3',
+        duration: 0,
+      };
+    };
+
+    return this.cache.prewarm(synthesizeFunc, voice || this.DEFAULT_VOICE_ID, format || 'mp3');
+  }
+
+  /**
+   * Get cache statistics
+   * @returns Cache statistics including hit rate and size
+   */
+  getCacheStats() {
+    return this.cache.getStats();
+  }
+
+  /**
+   * Clear all cached responses
+   */
+  clearCache(): void {
+    this.cache.clear();
+  }
+
+  /**
+   * Clear expired cache entries
+   * @returns Number of entries removed
+   */
+  clearExpiredCache(): number {
+    return this.cache.clearExpired();
+  }
+
+  /**
+   * Invalidate specific cached response
+   * @param text - Text to invalidate
+   * @param voice - Voice ID
+   * @param format - Audio format
+   * @returns True if entry was found and removed
+   */
+  invalidateCache(text: string, voice?: string, format?: string): boolean {
+    return this.cache.invalidate(text, voice, format);
+  }
+
+  /**
+   * Get cache memory usage estimate
+   * @returns Memory usage in bytes
+   */
+  getCacheMemoryUsage(): number {
+    return this.cache.getMemoryUsage();
   }
 }
