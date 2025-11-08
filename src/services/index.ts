@@ -3,6 +3,7 @@ export { TTSService } from './TTSService';
 export { TTSCache } from './TTSCache';
 export { SearchTool } from './SearchTool';
 export { LLMAgent } from './LLMAgent';
+export { StateManager } from './StateManager';
 export type { AudioBuffer } from './TTSService';
 export type {
   ConversationContext,
