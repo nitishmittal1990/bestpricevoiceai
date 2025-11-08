@@ -34,8 +34,8 @@
     - Add chunked audio handling for lower latency
     - _Requirements: 1.1_
 
-- [ ] 4. Implement Text-to-Speech service
-  - [ ] 4.1 Create TTSService class with ElevenLabs TTS integration
+- [-] 4. Implement Text-to-Speech service
+  - [x] 4.1 Create TTSService class with ElevenLabs TTS integration
     - Implement synthesize() method for text-to-audio conversion
     - Add voice selection from ElevenLabs voice library (choose natural Indian English voice)
     - Configure audio format options (MP3, WAV)

@@ -76,9 +76,49 @@ src/
 ├── config/          # Configuration and environment setup
 ├── models/          # TypeScript interfaces and data models
 ├── services/        # Service implementations (STT, TTS, LLM, Search)
+│   ├── STTService.ts    # Speech-to-Text using ElevenLabs
+│   ├── TTSService.ts    # Text-to-Speech using ElevenLabs
+│   └── __tests__/       # Service unit tests
+├── types/           # TypeScript type definitions
 ├── utils/           # Utility functions and helpers
 └── index.ts         # Application entry point
 ```
+
+## Services
+
+### Text-to-Speech (TTSService)
+
+The TTSService provides natural-sounding voice synthesis using ElevenLabs TTS API with the following features:
+
+- **Indian English Voice**: Optimized for Indian accent and pronunciation
+- **Currency Handling**: Automatic conversion of ₹ symbol to spoken "rupees"
+- **Platform Names**: Proper pronunciation of Indian e-commerce platforms
+- **Multiple Formats**: Support for MP3, WAV, and Opus audio formats
+- **Error Handling**: Automatic retry logic with exponential backoff
+- **Voice Selection**: Access to ElevenLabs voice library
+
+Example usage:
+```typescript
+import { TTSService } from './services/TTSService';
+
+const tts = new TTSService();
+
+// Basic synthesis
+const result = await tts.synthesize('Hello, how can I help you?');
+
+// With options
+const result = await tts.synthesize(
+  'The price is ₹1,99,900 on Flipkart',
+  { format: 'wav', voice: 'custom-voice-id' }
+);
+
+// Get available voices
+const voices = await tts.getAvailableVoices();
+```
+
+### Speech-to-Text (STTService)
+
+The STTService handles audio transcription using ElevenLabs Speech-to-Text API with support for multiple audio formats and real-time streaming.
 
 ## Supported Platforms
 
