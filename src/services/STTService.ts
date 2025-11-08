@@ -245,6 +245,199 @@ export class STTService {
   }
 
   /**
+   * Stream transcribe audio in real-time with chunked processing
+   * Provides lower latency by processing audio chunks as they arrive
+   * @param audioStream - Readable stream of audio data
+   * @param options - Transcription options
+   * @returns Async iterator yielding transcription chunks
+   */
+  async *streamTranscribe(
+    audioStream: Readable,
+    options?: TranscribeOptions
+  ): AsyncIterableIterator<TranscriptionResult> {
+    const CHUNK_SIZE = 64 * 1024; // 64KB chunks for optimal processing
+    const CHUNK_TIMEOUT = 5000; // 5 second timeout per chunk
+    
+    try {
+      logger.info('Starting streaming transcription', { options });
+
+      let buffer = Buffer.alloc(0);
+      let chunkCount = 0;
+
+      // Process audio stream in chunks
+      for await (const chunk of audioStream) {
+        try {
+          // Accumulate audio data
+          buffer = Buffer.concat([buffer, chunk]);
+          
+          // Process when we have enough data
+          if (buffer.length >= CHUNK_SIZE) {
+            chunkCount++;
+            logger.debug(`Processing audio chunk ${chunkCount}`, {
+              bufferSize: buffer.length,
+            });
+
+            // Extract chunk to process
+            const chunkToProcess = buffer.subarray(0, CHUNK_SIZE);
+            buffer = buffer.subarray(CHUNK_SIZE);
+
+            // Transcribe the chunk with timeout
+            const transcriptionPromise = this.transcribeChunk(
+              chunkToProcess,
+              options,
+              chunkCount
+            );
+
+            const timeoutPromise = new Promise<TranscriptionResult>((_, reject) => {
+              setTimeout(() => reject(new Error('Chunk transcription timeout')), CHUNK_TIMEOUT);
+            });
+
+            try {
+              const result = await Promise.race([transcriptionPromise, timeoutPromise]);
+              
+              // Only yield if we got meaningful text
+              if (result.text && result.text.trim().length > 0) {
+                yield result;
+              }
+            } catch (error) {
+              logger.warn(`Chunk ${chunkCount} transcription failed`, {
+                error: error instanceof Error ? error.message : 'Unknown error',
+              });
+              // Continue processing next chunks even if one fails
+              continue;
+            }
+          }
+        } catch (error) {
+          logger.error('Error processing audio chunk', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+            chunkCount,
+          });
+          // Continue processing despite errors
+          continue;
+        }
+      }
+
+      // Process any remaining buffer data
+      if (buffer.length > 0) {
+        chunkCount++;
+        logger.debug(`Processing final audio chunk ${chunkCount}`, {
+          bufferSize: buffer.length,
+        });
+
+        try {
+          const result = await this.transcribeChunk(buffer, options, chunkCount);
+          if (result.text && result.text.trim().length > 0) {
+            yield result;
+          }
+        } catch (error) {
+          logger.warn('Final chunk transcription failed', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      }
+
+      logger.info('Streaming transcription completed', {
+        totalChunks: chunkCount,
+      });
+    } catch (error) {
+      logger.error('Streaming transcription failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      throw new Error(
+        `Streaming transcription failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Transcribe a single audio chunk
+   * @param chunkBuffer - Audio chunk buffer
+   * @param options - Transcription options
+   * @param chunkNumber - Chunk sequence number for logging
+   * @returns Transcription result for the chunk
+   */
+  private async transcribeChunk(
+    chunkBuffer: Buffer,
+    options?: TranscribeOptions,
+    chunkNumber?: number
+  ): Promise<TranscriptionResult> {
+    const startTime = Date.now();
+
+    try {
+      // Validate chunk buffer
+      if (!chunkBuffer || chunkBuffer.length === 0) {
+        throw new Error('Audio chunk is empty');
+      }
+
+      // Detect audio format
+      const format = this.detectAudioFormat(chunkBuffer);
+      
+      // For chunks, we may not always have complete headers
+      // If format is unknown but we have data, assume it's a continuation
+      if (format === 'unknown' && chunkNumber && chunkNumber > 1) {
+        logger.debug(`Chunk ${chunkNumber} has no header, assuming continuation`);
+      }
+
+      // Convert buffer to readable stream
+      const chunkStream = Readable.from(chunkBuffer);
+
+      // Call ElevenLabs Speech-to-Text API
+      const response = await this.client.speechToText.convert({
+        file: chunkStream,
+        modelId: options?.model || 'scribe_v1',
+        languageCode: options?.language,
+        enableLogging: false,
+      });
+
+      // Extract transcription result
+      let text = '';
+      let languageCode = options?.language || 'en';
+      let confidence = 0.85;
+
+      if ('text' in response && typeof response.text === 'string') {
+        text = response.text;
+        if ('languageCode' in response) {
+          languageCode = response.languageCode as string;
+        }
+        if ('languageProbability' in response && typeof response.languageProbability === 'number') {
+          confidence = response.languageProbability;
+        }
+      }
+
+      const duration = Date.now() - startTime;
+
+      const result: TranscriptionResult = {
+        text: text.trim(),
+        confidence,
+        language: languageCode,
+        duration,
+      };
+
+      logger.debug(`Chunk ${chunkNumber || 'unknown'} transcribed`, {
+        textLength: result.text.length,
+        confidence: result.confidence,
+        duration: result.duration,
+      });
+
+      return result;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      logger.error(`Chunk ${chunkNumber || 'unknown'} transcription error`, {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        duration,
+      });
+
+      // Return empty result instead of throwing to allow stream to continue
+      return {
+        text: '',
+        confidence: 0,
+        language: options?.language || 'en',
+        duration,
+      };
+    }
+  }
+
+  /**
    * Check if transcription confidence is acceptable
    * @param result - Transcription result
    * @returns True if confidence meets threshold

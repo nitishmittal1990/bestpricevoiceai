@@ -29,7 +29,7 @@
     - Configure ElevenLabs API client with proper authentication
     - _Requirements: 1.1, 1.2, 1.3, 1.4_
   
-  - [ ]* 3.2 Add streaming transcription support
+  - [x] 3.2 Add streaming transcription support
     - Implement streamTranscribe() for real-time audio processing
     - Add chunked audio handling for lower latency
     - _Requirements: 1.1_
