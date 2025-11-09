@@ -1,291 +1,445 @@
 # Voice Price Comparison Agent
 
-A voice-enabled AI agent that helps users find the best prices for products across multiple Indian e-commerce platforms.
+A voice-enabled AI agent that helps users find the best prices for products across multiple Indian e-commerce platforms through natural conversation.
 
-## Features
+## 🎯 Overview
 
-- Voice-first interaction using speech-to-text and text-to-speech
-- Intelligent specification gathering through conversational AI
-- Multi-platform price comparison across major Indian e-commerce sites
-- Natural language understanding powered by Claude/GPT-4
-- Real-time product search and price discovery
-- Comprehensive structured logging with Winston for monitoring and debugging
+The Voice Price Comparison Agent is an intelligent conversational AI system that:
+- Understands natural voice queries about products
+- Gathers specifications through interactive dialogue
+- Searches across 8+ major Indian e-commerce platforms
+- Compares prices and presents the best deals
+- Responds with natural-sounding voice output
 
-## Prerequisites
+Perfect for hands-free shopping, accessibility needs, or anyone who prefers voice interaction over typing.
 
-- Node.js 18+ and npm
-- API keys for:
-  - ElevenLabs (for voice services)
-  - Anthropic Claude or OpenAI (for LLM)
-  - SerpAPI (for web search)
-  - Tavily API (for fallback search)
+## ✨ Features
 
-## Installation
+- **Voice-First Interaction**: Complete voice-based interface using ElevenLabs STT/TTS
+- **Intelligent Conversations**: Natural dialogue powered by Claude/GPT-4
+- **Smart Specification Gathering**: Asks clarifying questions to get exact product details
+- **Multi-Platform Search**: Searches Flipkart, Amazon India, Croma, Myntra, and more
+- **Accurate Price Comparison**: Ensures specification matching before comparing prices
+- **Real-Time Results**: Fast response times (< 2 seconds target)
+- **Comprehensive Logging**: Structured logging with Winston for monitoring and debugging
+- **RESTful API**: Easy integration with any client application
 
-1. Clone the repository
-2. Install dependencies:
+## 🚀 Quick Start
+
+### Prerequisites
+
+- **Node.js** 18+ and npm
+- **API Keys** from:
+  - [ElevenLabs](https://elevenlabs.io/) - Voice services (STT/TTS)
+  - [Anthropic](https://console.anthropic.com/) - Claude LLM
+  - [SerpAPI](https://serpapi.com/) - Web search
+  - [Tavily](https://tavily.com/) - Fallback search
+
+### Installation
+
+1. **Clone and install**:
 ```bash
+git clone <repository-url>
+cd voice-price-comparison-agent
 npm install
 ```
 
-3. Copy `.env.example` to `.env` and fill in your API keys:
+2. **Configure API keys**:
 ```bash
 cp .env.example .env
+# Edit .env and add your API keys
 ```
 
-4. Edit `.env` with your API keys
-
-## Configuration
-
-Edit the `.env` file with your API credentials:
-
-```env
-ELEVENLABS_API_KEY=your_key_here
-ANTHROPIC_API_KEY=your_key_here
-SERPAPI_API_KEY=your_key_here
-TAVILY_API_KEY=your_key_here
-```
-
-## Development
-
-Run in development mode:
+3. **Start the server**:
 ```bash
 npm run dev
 ```
 
-Build the project:
+4. **Test the API**:
 ```bash
-npm run build
+curl http://localhost:3000/health
 ```
 
-Run tests:
+You should see: `{"status":"ok","timestamp":"..."}`
+
+### Your First Voice Query
+
+1. **Start a session**:
+```bash
+SESSION_ID=$(curl -X POST http://localhost:3000/api/session/start | jq -r '.sessionId')
+echo "Session ID: $SESSION_ID"
+```
+
+2. **Send an audio query** (requires audio file):
+```bash
+curl -X POST http://localhost:3000/api/session/$SESSION_ID/message \
+  -F "audio=@your-query.mp3" \
+  --output response.mp3
+```
+
+3. **Check the session state**:
+```bash
+curl http://localhost:3000/api/session/$SESSION_ID/state | jq
+```
+
+4. **End the session**:
+```bash
+curl -X DELETE http://localhost:3000/api/session/$SESSION_ID
+```
+
+### Using the Test Client
+
+For easier testing without audio files:
+
+```bash
+# Simple test (no audio required)
+npx ts-node examples/simple-test-client.ts
+
+# Generate sample audio files
+npx ts-node examples/generate-sample-audio.ts
+
+# Full voice test with audio
+npx ts-node examples/voice-agent-test-client.ts
+```
+
+## 📖 Documentation
+
+### Getting Started
+- **[Setup Guide](docs/SETUP_GUIDE.md)** - Complete setup and configuration instructions
+- **[API Documentation](docs/API.md)** - Detailed API reference with examples
+- **[Examples](examples/README.md)** - Test clients and usage examples
+
+### Understanding the System
+- **[Conversation Flows](docs/CONVERSATION_FLOWS.md)** - Example conversations and patterns
+- **[Platforms & Categories](docs/PLATFORMS_AND_CATEGORIES.md)** - Supported platforms and products
+- **[Architecture](docs/API_SERVER_IMPLEMENTATION.md)** - Technical implementation details
+
+### Advanced Topics
+- **[Logging System](docs/LOGGING.md)** - Structured logging and monitoring
+- **[TTS Caching](docs/TTS_CACHING.md)** - Performance optimization with caching
+- **[LLM Agent](docs/LLM_AGENT.md)** - Conversation intelligence details
+
+## 🏗️ Architecture
+
+```
+┌─────────────┐
+│   User      │
+│   Voice     │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────────────────────────────┐
+│         API Server (Express)            │
+│  ┌────────────────────────────────┐    │
+│  │  Conversation Orchestrator     │    │
+│  └────────────────────────────────┘    │
+└─────────────────────────────────────────┘
+       │
+       ├──────────────┬──────────────┬──────────────┐
+       ▼              ▼              ▼              ▼
+┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+│   STT    │   │   LLM    │   │  Search  │   │   TTS    │
+│ Service  │   │  Agent   │   │   Tool   │   │ Service  │
+└──────────┘   └──────────┘   └──────────┘   └──────────┘
+     │              │              │              │
+     ▼              ▼              ▼              ▼
+┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
+│ElevenLabs│   │  Claude  │   │ SerpAPI  │   │ElevenLabs│
+│   API    │   │   API    │   │  Tavily  │   │   API    │
+└──────────┘   └──────────┘   └──────────┘   └──────────┘
+```
+
+## 🛠️ Development
+
+### Run in Development Mode
+```bash
+npm run dev
+```
+
+### Build for Production
+```bash
+npm run build
+npm start
+```
+
+### Run Tests
 ```bash
 npm test
 ```
 
-## Production
-
-Start the production server:
+### Run Specific Examples
 ```bash
-npm start
+# Conversation orchestrator demo
+npx ts-node examples/conversation-orchestrator-demo.ts
+
+# LLM agent demo
+npx ts-node examples/llm-agent-demo.ts
+
+# Search tool demo
+npx ts-node examples/search-demo.ts
+
+# TTS with caching demo
+npx ts-node examples/tts-cache-demo.ts
+
+# Logging demo
+npx ts-node examples/logger-standalone-demo.ts
 ```
 
-## API Server
+## 🌐 API Reference
 
-The Voice Price Comparison Agent provides a REST API for voice-based product price comparison.
+### Endpoints
 
-### Quick Start
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/session/start` | Start a new conversation session |
+| `POST` | `/api/session/:id/message` | Send audio message, receive audio response |
+| `GET` | `/api/session/:id/state` | Get current session state |
+| `DELETE` | `/api/session/:id` | End a session |
+| `GET` | `/health` | Health check endpoint |
 
-1. Start the server:
-```bash
-npm run dev
-```
+### Authentication
 
-2. The API will be available at `http://localhost:3000`
-
-### API Endpoints
-
-- `POST /api/session/start` - Start a new conversation session
-- `POST /api/session/:id/message` - Send audio message (accepts audio file, returns audio response)
-- `GET /api/session/:id/state` - Get current session state
-- `DELETE /api/session/:id` - End a session
-
-### Example Usage
-
-```bash
-# Start a session
-SESSION_ID=$(curl -X POST http://localhost:3000/api/session/start | jq -r '.sessionId')
-
-# Send audio query
-curl -X POST http://localhost:3000/api/session/$SESSION_ID/message \
-  -F "audio=@query.mp3" \
-  --output response.mp3
-
-# Get session state
-curl -X GET http://localhost:3000/api/session/$SESSION_ID/state
-
-# End session
-curl -X DELETE http://localhost:3000/api/session/$SESSION_ID
-```
-
-### Security
-
-Optional API key authentication can be enabled by setting the `API_KEY` environment variable:
+Optional API key authentication:
 
 ```env
 API_KEY=your_secret_api_key_here
 ```
 
-When enabled, include the API key in requests:
+Include in requests:
 ```bash
-curl -H "Authorization: Bearer your_secret_api_key_here" ...
+curl -H "Authorization: Bearer your_api_key" ...
 ```
 
-### Rate Limiting
+### Rate Limits
 
-- Session creation: 10 per IP per 15 minutes
-- Message sending: 60 per session per minute
-- General API: 100 requests per IP per 15 minutes
+- **Session creation**: 10 per IP per 15 minutes
+- **Message sending**: 60 per session per minute
+- **General API**: 100 requests per IP per 15 minutes
 
-### Documentation
+### Example: Complete Workflow
 
-- Full API documentation: [docs/API.md](docs/API.md)
-- Implementation details: [docs/API_SERVER_IMPLEMENTATION.md](docs/API_SERVER_IMPLEMENTATION.md)
-- Logging system: [docs/LOGGING.md](docs/LOGGING.md)
-- Example client: [examples/api-client-demo.ts](examples/api-client-demo.ts)
-
-## Project Structure
-
-```
-src/
-├── config/          # Configuration and environment setup
-├── middleware/      # Express middleware (auth, rate limiting, validation)
-├── models/          # TypeScript interfaces and data models
-├── routes/          # API route handlers
-│   └── session.routes.ts  # Session management endpoints
-├── services/        # Service implementations (STT, TTS, LLM, Search)
-│   ├── STTService.ts           # Speech-to-Text using ElevenLabs
-│   ├── TTSService.ts           # Text-to-Speech using ElevenLabs
-│   ├── TTSCache.ts             # TTS response caching
-│   ├── LLMAgent.ts             # LLM-based conversation agent
-│   ├── SearchTool.ts           # Product search and price comparison
-│   ├── StateManager.ts         # Session state management
-│   ├── ConversationOrchestrator.ts  # Main orchestration logic
-│   └── __tests__/              # Service unit tests
-├── types/           # TypeScript type definitions
-├── utils/           # Utility functions and helpers
-└── index.ts         # Application entry point (Express server)
-```
-
-## Services
-
-### Text-to-Speech (TTSService)
-
-The TTSService provides natural-sounding voice synthesis using ElevenLabs TTS API with the following features:
-
-- **Indian English Voice**: Optimized for Indian accent and pronunciation
-- **Currency Handling**: Automatic conversion of ₹ symbol to spoken "rupees"
-- **Platform Names**: Proper pronunciation of Indian e-commerce platforms
-- **Multiple Formats**: Support for MP3, WAV, and Opus audio formats
-- **Error Handling**: Automatic retry logic with exponential backoff
-- **Voice Selection**: Access to ElevenLabs voice library
-- **Response Caching**: Intelligent caching of frequently used phrases for improved performance
-- **Cache Pre-warming**: Pre-load common phrases at startup for instant responses
-
-#### Basic Usage
-
-```typescript
-import { TTSService } from './services/TTSService';
-
-const tts = new TTSService();
-
-// Basic synthesis
-const result = await tts.synthesize('Hello, how can I help you?');
-
-// With options
-const result = await tts.synthesize(
-  'The price is ₹1,99,900 on Flipkart',
-  { format: 'wav', voice: 'custom-voice-id' }
-);
-
-// Get available voices
-const voices = await tts.getAvailableVoices();
-```
-
-#### Caching Features
-
-The TTSService includes an intelligent caching layer that significantly improves performance for repeated phrases:
-
-```typescript
-// Initialize with custom cache settings
-const tts = new TTSService(
-  true,              // Enable caching
-  100,               // Max 100 cache entries
-  24 * 60 * 60 * 1000 // 24 hour TTL
-);
-
-// Pre-warm cache with common phrases at startup
-await tts.prewarmCache();
-
-// Get cache statistics
-const stats = tts.getCacheStats();
-console.log(`Hit rate: ${stats.hitRate}%`);
-console.log(`Cache size: ${stats.size} entries`);
-
-// Clear cache if needed
-tts.clearCache();
-
-// Invalidate specific entry
-tts.invalidateCache('specific text to invalidate');
-
-// Clear only expired entries
-tts.clearExpiredCache();
-
-// Check memory usage
-const memoryBytes = tts.getCacheMemoryUsage();
-```
-
-**Cache Benefits:**
-- Reduces API calls and costs
-- Improves response latency (typically 10-100x faster for cached responses)
-- Automatic eviction of least-used entries when cache is full
-- Case-insensitive matching for better hit rates
-- Separate caching for different voices and formats
-
-### Speech-to-Text (STTService)
-
-The STTService handles audio transcription using ElevenLabs Speech-to-Text API with support for multiple audio formats and real-time streaming.
-
-### Logging System
-
-The application uses Winston for comprehensive structured logging:
-
-- **Structured JSON Logs**: All logs include structured metadata for easy parsing
-- **Multiple Log Levels**: Debug, info, warn, and error levels
-- **API Call Tracking**: Automatic logging of all external API calls with timing
-- **Conversation Flow Tracking**: Track state transitions and events in conversations
-- **Performance Monitoring**: Built-in performance tracking with warnings for slow operations (>2s)
-- **Sensitive Data Protection**: Automatic sanitization of API keys and passwords
-- **Colorized Output**: Easy-to-read colored console output in development
-
-#### Quick Example
-
-```typescript
-import { logger, logApiCall, logApiResponse, PerformanceTimer } from './utils/logger';
-
-// Basic logging
-logger.info('Operation completed', { result: data });
-
-// API call tracking
-logApiCall('ElevenLabs TTS', 'synthesize', { textLength: 150 });
-logApiResponse('ElevenLabs TTS', 'synthesize', true, 123);
-
-// Performance monitoring
-const timer = new PerformanceTimer('operation_name', sessionId);
-// ... do work ...
-timer.end(); // Automatically logs duration
-```
-
-#### Demo
-
-Run the logging demonstration:
 ```bash
-npx ts-node examples/logger-standalone-demo.ts
+# 1. Start session
+SESSION_ID=$(curl -X POST http://localhost:3000/api/session/start | jq -r '.sessionId')
+
+# 2. Send audio query
+curl -X POST http://localhost:3000/api/session/$SESSION_ID/message \
+  -F "audio=@query.mp3" \
+  --output response.mp3
+
+# 3. Check state
+curl http://localhost:3000/api/session/$SESSION_ID/state | jq
+
+# 4. Continue conversation
+curl -X POST http://localhost:3000/api/session/$SESSION_ID/message \
+  -F "audio=@followup.mp3" \
+  --output response2.mp3
+
+# 5. End session
+curl -X DELETE http://localhost:3000/api/session/$SESSION_ID
 ```
 
-For complete documentation, see [docs/LOGGING.md](docs/LOGGING.md)
+See [API Documentation](docs/API.md) for complete details.
 
-## Supported Platforms
+## 📁 Project Structure
 
-- Flipkart
-- Amazon India
-- Myntra
-- Croma
-- Reliance Digital
-- Vijay Sales
-- Tata Cliq
-- Snapdeal
+```
+voice-price-comparison-agent/
+├── src/
+│   ├── config/              # Configuration and environment setup
+│   ├── middleware/          # Express middleware (auth, rate limiting, validation)
+│   ├── models/              # TypeScript interfaces and data models
+│   ├── routes/              # API route handlers
+│   ├── services/            # Core service implementations
+│   │   ├── STTService.ts              # Speech-to-Text (ElevenLabs)
+│   │   ├── TTSService.ts              # Text-to-Speech (ElevenLabs)
+│   │   ├── TTSCache.ts                # TTS response caching
+│   │   ├── LLMAgent.ts                # Conversation intelligence (Claude)
+│   │   ├── SearchTool.ts              # Product search & price comparison
+│   │   ├── StateManager.ts            # Session state management
+│   │   ├── ConversationOrchestrator.ts # Main orchestration logic
+│   │   └── __tests__/                 # Service unit tests
+│   ├── types/               # TypeScript type definitions
+│   ├── utils/               # Utility functions (logger, validation)
+│   └── index.ts             # Application entry point
+├── examples/                # Example clients and demos
+├── docs/                    # Documentation
+├── .env.example             # Environment variables template
+└── package.json             # Dependencies and scripts
+```
 
-## License
+## 🛍️ Supported Platforms
+
+The agent searches across 8+ major Indian e-commerce platforms:
+
+| Platform | Categories | Best For |
+|----------|-----------|----------|
+| **Flipkart** | Electronics, Fashion, General | Competitive pricing, wide range |
+| **Amazon India** | Electronics, Fashion, General | Prime benefits, fast delivery |
+| **Croma** | Electronics, Appliances | In-store support, demos |
+| **Reliance Digital** | Electronics, Appliances | Physical stores, warranties |
+| **Vijay Sales** | Electronics | Competitive pricing |
+| **Myntra** | Fashion, Accessories | Fashion-focused, exclusive brands |
+| **Tata Cliq** | Electronics, Fashion, Luxury | Authentic products, Tata trust |
+| **Snapdeal** | General | Budget-friendly options |
+
+See [Platforms & Categories](docs/PLATFORMS_AND_CATEGORIES.md) for complete details.
+
+## 📦 Product Categories
+
+Supported product categories with intelligent specification gathering:
+
+- **Laptops** - Brand, model, processor, RAM, storage, screen size
+- **Phones** - Brand, model, storage, color
+- **Tablets** - Brand, model, size, storage, connectivity
+- **Headphones** - Brand, model, type, connectivity
+- **Monitors** - Brand, model, size, resolution
+- **Cameras** - Brand, model, type
+- **Desktops** - Brand, model, processor, RAM, storage
+- **Smartwatches** - Brand, model, size
+
+## 🔧 Configuration
+
+### Environment Variables
+
+Required:
+```env
+ELEVENLABS_API_KEY=your_elevenlabs_key
+ANTHROPIC_API_KEY=your_anthropic_key
+SERPAPI_API_KEY=your_serpapi_key
+TAVILY_API_KEY=your_tavily_key
+```
+
+Optional:
+```env
+PORT=3000
+NODE_ENV=development
+API_KEY=your_api_key              # Enable API authentication
+CORS_ORIGIN=*                     # CORS configuration
+SESSION_TIMEOUT_MS=1800000        # 30 minutes
+RATE_LIMIT_MAX_REQUESTS=100       # Rate limit
+```
+
+See [Setup Guide](docs/SETUP_GUIDE.md) for complete configuration options.
+
+## 🧪 Testing
+
+### Run All Tests
+```bash
+npm test
+```
+
+### Run Specific Test Suites
+```bash
+# Service tests
+npm test -- STTService
+npm test -- TTSService
+npm test -- LLMAgent
+npm test -- SearchTool
+npm test -- ConversationOrchestrator
+
+# API tests
+npm test -- session.routes
+```
+
+### Test Coverage
+```bash
+npm test -- --coverage
+```
+
+## 🎭 Example Conversations
+
+### Complete Specification
+```
+User: "Find me the cheapest MacBook Pro 14 inch with M3 Pro chip, 18GB RAM, and 512GB storage"
+Agent: "Let me search for that..."
+Agent: "The lowest price is ₹1,99,900 on Flipkart, followed by ₹2,04,900 on Amazon India."
+```
+
+### Progressive Specification
+```
+User: "I want to buy a laptop"
+Agent: "Which brand are you interested in?"
+User: "Apple"
+Agent: "MacBook Air or MacBook Pro?"
+User: "MacBook Pro"
+Agent: "What screen size? 14-inch or 16-inch?"
+... (continues until all specs gathered)
+```
+
+See [Conversation Flows](docs/CONVERSATION_FLOWS.md) for more examples.
+
+## 🚨 Troubleshooting
+
+### Common Issues
+
+**"Cannot find module" errors**
+```bash
+rm -rf node_modules package-lock.json
+npm install
+```
+
+**"Port 3000 already in use"**
+```bash
+PORT=3001 npm run dev
+```
+
+**"API key not defined"**
+- Check `.env` file exists and has correct keys
+- Restart server after changing `.env`
+
+**"Session not found"**
+- Sessions expire after 30 minutes
+- Create a new session
+
+See [Setup Guide](docs/SETUP_GUIDE.md) for more troubleshooting tips.
+
+## 📊 Performance
+
+Target metrics:
+- **End-to-end response**: < 2 seconds
+- **STT transcription**: ~500ms
+- **LLM processing**: ~800ms
+- **Search**: ~1-2 seconds
+- **TTS synthesis**: ~500ms (or instant with cache)
+
+## 🔒 Security
+
+- Optional API key authentication
+- Rate limiting per IP and session
+- Input validation and sanitization
+- CORS configuration
+- Secure API key storage
+- Request logging
+
+See [Setup Guide](docs/SETUP_GUIDE.md) for production security checklist.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
+
+## 📄 License
 
 MIT
+
+## 🙏 Acknowledgments
+
+Built with:
+- [ElevenLabs](https://elevenlabs.io/) - Voice services
+- [Anthropic Claude](https://www.anthropic.com/) - Conversational AI
+- [SerpAPI](https://serpapi.com/) - Web search
+- [Tavily](https://tavily.com/) - AI search
+- [Express](https://expressjs.com/) - Web framework
+- [Winston](https://github.com/winstonjs/winston) - Logging
+
+## 📞 Support
+
+- **Documentation**: [docs/](docs/)
+- **Examples**: [examples/](examples/)
+- **Issues**: GitHub Issues
+- **API Reference**: [docs/API.md](docs/API.md)

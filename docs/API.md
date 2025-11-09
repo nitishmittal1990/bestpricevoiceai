@@ -393,3 +393,12 @@ requests.delete(f'{API_BASE}/api/session/{session_id}', headers=headers)
 ### Audio response is empty or corrupted
 - Ensure you're saving the response as binary data
 - Check that the Content-Type header is set correctly
+
+## Additional Documentation
+
+- **Setup Guide**: [docs/SETUP_GUIDE.md](SETUP_GUIDE.md) - Complete setup and configuration instructions
+- **Conversation Flows**: [docs/CONVERSATION_FLOWS.md](CONVERSATION_FLOWS.md) - Example conversations and flow patterns
+- **Platforms & Categories**: [docs/PLATFORMS_AND_CATEGORIES.md](PLATFORMS_AND_CATEGORIES.md) - Supported platforms and product categories
+- **Implementation Details**: [docs/API_SERVER_IMPLEMENTATION.md](API_SERVER_IMPLEMENTATION.md) - Technical implementation details
+- **Logging System**: [docs/LOGGING.md](LOGGING.md) - Structured logging and monitoring
+- **Examples**: [examples/README.md](../examples/README.md) - Test clients and usage examples
