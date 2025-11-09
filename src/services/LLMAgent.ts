@@ -8,7 +8,7 @@ import {
   ProductCategory,
   Specifications,
 } from '../types';
-import { logger } from '../utils/logger';
+import { logger, logApiCall, logApiResponse, PerformanceTimer } from '../utils/logger';
 
 /**
  * Context for LLM conversation processing
@@ -213,8 +213,13 @@ Product categories you handle: laptops, phones, tablets, desktops, monitors, hea
     message: string,
     context: ConversationContext
   ): Promise<AgentResponse> {
+    const timer = new PerformanceTimer('LLMAgent.processUserMessage', undefined, {
+      messageLength: message.length,
+      conversationState: context.conversationState,
+    });
+
     try {
-      logger.info('Processing user message', {
+      logApiCall('Anthropic Claude', 'processUserMessage', {
         messageLength: message.length,
         historyLength: context.history.length,
         conversationState: context.conversationState,
@@ -251,6 +256,9 @@ Product categories you handle: laptops, phones, tablets, desktops, monitors, hea
         tools: this.getTools(),
       });
 
+      const duration = timer.end();
+      logApiResponse('Anthropic Claude', 'processUserMessage', true, duration);
+
       logger.info('Received LLM response', {
         stopReason: response.stop_reason,
         contentBlocks: response.content.length,
@@ -259,7 +267,14 @@ Product categories you handle: laptops, phones, tablets, desktops, monitors, hea
       // Process response
       return this.processLLMResponse(response, context);
     } catch (error) {
-      logger.error('Error processing user message', { error });
+      const duration = timer.end();
+      logApiResponse(
+        'Anthropic Claude',
+        'processUserMessage',
+        false,
+        duration,
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       throw new Error(`Failed to process message: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }

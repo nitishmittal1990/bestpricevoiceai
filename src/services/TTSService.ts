@@ -1,7 +1,7 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { config } from '../config';
 import { SynthesizeOptions } from '../types';
-import { logger } from '../utils/logger';
+import { logger, logApiCall, logApiResponse, PerformanceTimer } from '../utils/logger';
 import { Readable } from 'stream';
 import { TTSCache } from './TTSCache';
 
@@ -73,10 +73,12 @@ export class TTSService {
     text: string,
     options?: SynthesizeOptions
   ): Promise<AudioBuffer> {
-    const startTime = Date.now();
+    const timer = new PerformanceTimer('TTS.synthesize', undefined, {
+      textLength: text.length,
+    });
 
     try {
-      logger.info('Starting text-to-speech synthesis', {
+      logApiCall('ElevenLabs TTS', 'synthesize', {
         textLength: text.length,
         options,
       });
@@ -95,10 +97,11 @@ export class TTSService {
       // Check cache first
       const cachedAudio = this.cache.get(text, options?.voice, format);
       if (cachedAudio) {
+        const duration = timer.end();
         logger.info('Text-to-speech synthesis served from cache', {
           textLength: text.length,
           audioSize: cachedAudio.data.length,
-          duration: Date.now() - startTime,
+          duration,
         });
         return cachedAudio;
       }
@@ -112,7 +115,7 @@ export class TTSService {
         options
       );
 
-      const duration = Date.now() - startTime;
+      const duration = timer.end();
 
       const result: AudioBuffer = {
         data: audioData,
@@ -123,6 +126,7 @@ export class TTSService {
       // Cache the result (especially for common phrases)
       this.cache.set(text, result, options?.voice, format);
 
+      logApiResponse('ElevenLabs TTS', 'synthesize', true, duration);
       logger.info('Text-to-speech synthesis completed successfully', {
         textLength: text.length,
         audioSize: audioData.length,
@@ -132,11 +136,14 @@ export class TTSService {
 
       return result;
     } catch (error) {
-      const duration = Date.now() - startTime;
-      logger.error('Text-to-speech synthesis failed', {
-        error: error instanceof Error ? error.message : 'Unknown error',
+      const duration = timer.end();
+      logApiResponse(
+        'ElevenLabs TTS',
+        'synthesize',
+        false,
         duration,
-      });
+        error instanceof Error ? error : new Error('Unknown error')
+      );
 
       // Handle specific error cases
       if (error instanceof Error) {

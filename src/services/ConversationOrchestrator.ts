@@ -4,7 +4,7 @@ import { LLMAgent, ConversationContext } from './LLMAgent';
 import { SearchTool } from './SearchTool';
 import { StateManager } from './StateManager';
 import { SessionState, ConversationState, ProductQuery } from '../types';
-import { logger } from '../utils/logger';
+import { logger, logConversationTransition, logConversationEvent, PerformanceTimer } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -63,18 +63,23 @@ export class ConversationOrchestrator {
    */
   async endSession(sessionId: string): Promise<void> {
     try {
-      logger.info('Ending session', { sessionId });
+      logConversationEvent(sessionId, 'session_ending');
+      
+      // Get current state before ending
+      const currentState = await this.stateManager.loadState(sessionId);
+      const fromState = currentState?.conversationState || ConversationState.INITIAL;
       
       // Update session status to completed
       await this.stateManager.updateSessionStatus(sessionId, 'completed');
       
       // Update conversation state to ended
+      logConversationTransition(sessionId, fromState, ConversationState.ENDED, 'User ended session');
       await this.stateManager.updateConversationState(sessionId, ConversationState.ENDED);
       
       // Delete session state
       await this.stateManager.deleteState(sessionId);
       
-      logger.info('Session ended successfully', { sessionId });
+      logConversationEvent(sessionId, 'session_ended');
     } catch (error) {
       logger.error('Failed to end session', { sessionId, error });
       throw new Error(`Failed to end session: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -110,11 +115,12 @@ export class ConversationOrchestrator {
    * @returns Audio response buffer
    */
   async handleUserInput(sessionId: string, audioInput: Buffer): Promise<AudioBuffer> {
-    const startTime = Date.now();
+    const timer = new PerformanceTimer('ConversationOrchestrator.handleUserInput', sessionId, {
+      audioSize: audioInput.length,
+    });
     
     try {
-      logger.info('Handling user input', {
-        sessionId,
+      logConversationEvent(sessionId, 'user_input_received', {
         audioSize: audioInput.length,
       });
 
@@ -141,10 +147,8 @@ export class ConversationOrchestrator {
         
         const audioResponse = await this.ttsService.synthesize(exitMessage);
         
-        logger.info('User input handled (exit)', {
-          sessionId,
-          duration: Date.now() - startTime,
-        });
+        const duration = timer.end();
+        logConversationEvent(sessionId, 'user_input_handled_exit', { duration });
         
         return audioResponse;
       }
@@ -171,6 +175,15 @@ export class ConversationOrchestrator {
 
       // Update conversation state if changed
       if (agentResponse.conversationState) {
+        const currentState = sessionState.conversationState;
+        if (currentState !== agentResponse.conversationState) {
+          logConversationTransition(
+            sessionId,
+            currentState,
+            agentResponse.conversationState,
+            'Agent response triggered state change'
+          );
+        }
         await this.stateManager.updateConversationState(sessionId, agentResponse.conversationState);
       }
 
@@ -185,14 +198,15 @@ export class ConversationOrchestrator {
         await this.stateManager.updateSessionStatus(sessionId, 'waiting');
       }
 
-      logger.info('User input handled successfully', {
-        sessionId,
-        duration: Date.now() - startTime,
+      const duration = timer.end();
+      logConversationEvent(sessionId, 'user_input_handled', {
+        duration,
         conversationState: agentResponse.conversationState,
       });
 
       return audioResponse;
     } catch (error) {
+      timer.end();
       logger.error('Failed to handle user input', { sessionId, error });
       
       // Generate error response

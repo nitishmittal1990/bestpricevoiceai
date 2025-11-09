@@ -3,7 +3,7 @@ import axios from 'axios';
 import { config } from '../config';
 import { INDIAN_ECOMMERCE_PLATFORMS, getPlatformByDomain } from '../config/platforms';
 import { ProductQuery, SearchResult, Specifications } from '../types';
-import { logger } from '../utils/logger';
+import { logger, logApiCall, logApiResponse, PerformanceTimer } from '../utils/logger';
 
 /**
  * SearchTool service for finding product prices across multiple e-commerce platforms
@@ -24,23 +24,38 @@ export class SearchTool {
    * @returns Array of search results with pricing information
    */
   async searchProductPrices(query: ProductQuery): Promise<SearchResult[]> {
-    logger.info('Starting product price search', { 
+    const timer = new PerformanceTimer('SearchTool.searchProductPrices', undefined, {
       productName: query.productName,
-      specifications: query.specifications 
+    });
+
+    logApiCall('SearchTool', 'searchProductPrices', {
+      productName: query.productName,
+      specifications: query.specifications,
     });
 
     try {
       // Attempt search with SerpAPI first
       const results = await this.searchWithSerpAPI(query);
       
+      const duration = timer.end();
+      
       if (results.length === 0) {
         logger.warn('No results from SerpAPI, trying fallback');
         return await this.searchWithTavily(query);
       }
 
+      logApiResponse('SearchTool', 'searchProductPrices', true, duration);
       return results;
     } catch (error) {
+      const duration = timer.end();
       logger.error('SerpAPI search failed, falling back to Tavily', { error });
+      logApiResponse(
+        'SearchTool',
+        'searchProductPrices',
+        false,
+        duration,
+        error instanceof Error ? error : new Error('Unknown error')
+      );
       return await this.searchWithTavily(query);
     }
   }

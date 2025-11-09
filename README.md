@@ -9,6 +9,7 @@ A voice-enabled AI agent that helps users find the best prices for products acro
 - Multi-platform price comparison across major Indian e-commerce sites
 - Natural language understanding powered by Claude/GPT-4
 - Real-time product search and price discovery
+- Comprehensive structured logging with Winston for monitoring and debugging
 
 ## Prerequisites
 
@@ -130,6 +131,7 @@ curl -H "Authorization: Bearer your_secret_api_key_here" ...
 
 - Full API documentation: [docs/API.md](docs/API.md)
 - Implementation details: [docs/API_SERVER_IMPLEMENTATION.md](docs/API_SERVER_IMPLEMENTATION.md)
+- Logging system: [docs/LOGGING.md](docs/LOGGING.md)
 - Example client: [examples/api-client-demo.ts](examples/api-client-demo.ts)
 
 ## Project Structure
@@ -233,6 +235,45 @@ const memoryBytes = tts.getCacheMemoryUsage();
 ### Speech-to-Text (STTService)
 
 The STTService handles audio transcription using ElevenLabs Speech-to-Text API with support for multiple audio formats and real-time streaming.
+
+### Logging System
+
+The application uses Winston for comprehensive structured logging:
+
+- **Structured JSON Logs**: All logs include structured metadata for easy parsing
+- **Multiple Log Levels**: Debug, info, warn, and error levels
+- **API Call Tracking**: Automatic logging of all external API calls with timing
+- **Conversation Flow Tracking**: Track state transitions and events in conversations
+- **Performance Monitoring**: Built-in performance tracking with warnings for slow operations (>2s)
+- **Sensitive Data Protection**: Automatic sanitization of API keys and passwords
+- **Colorized Output**: Easy-to-read colored console output in development
+
+#### Quick Example
+
+```typescript
+import { logger, logApiCall, logApiResponse, PerformanceTimer } from './utils/logger';
+
+// Basic logging
+logger.info('Operation completed', { result: data });
+
+// API call tracking
+logApiCall('ElevenLabs TTS', 'synthesize', { textLength: 150 });
+logApiResponse('ElevenLabs TTS', 'synthesize', true, 123);
+
+// Performance monitoring
+const timer = new PerformanceTimer('operation_name', sessionId);
+// ... do work ...
+timer.end(); // Automatically logs duration
+```
+
+#### Demo
+
+Run the logging demonstration:
+```bash
+npx ts-node examples/logger-standalone-demo.ts
+```
+
+For complete documentation, see [docs/LOGGING.md](docs/LOGGING.md)
 
 ## Supported Platforms
 

@@ -1,7 +1,7 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { config } from '../config';
 import { TranscribeOptions, TranscriptionResult } from '../types';
-import { logger } from '../utils/logger';
+import { logger, logApiCall, logApiResponse, PerformanceTimer } from '../utils/logger';
 import { Readable } from 'stream';
 
 /**
@@ -30,10 +30,12 @@ export class STTService {
     audioBuffer: Buffer,
     options?: TranscribeOptions
   ): Promise<TranscriptionResult> {
-    const startTime = Date.now();
+    const timer = new PerformanceTimer('STT.transcribe', undefined, {
+      bufferSize: audioBuffer.length,
+    });
 
     try {
-      logger.info('Starting audio transcription', {
+      logApiCall('ElevenLabs STT', 'transcribe', {
         bufferSize: audioBuffer.length,
         options,
       });
@@ -89,7 +91,7 @@ export class STTService {
       // Enhance confidence score with quality indicators
       const enhancedConfidence = this.enhanceConfidence(confidence, text, audioBuffer.length);
 
-      const duration = Date.now() - startTime;
+      const duration = timer.end();
 
       const result: TranscriptionResult = {
         text: text.trim(),
@@ -98,6 +100,7 @@ export class STTService {
         duration,
       };
 
+      logApiResponse('ElevenLabs STT', 'transcribe', true, duration);
       logger.info('Transcription completed successfully', {
         textLength: result.text.length,
         confidence: result.confidence,
@@ -114,11 +117,14 @@ export class STTService {
 
       return result;
     } catch (error) {
-      const duration = Date.now() - startTime;
-      logger.error('Transcription failed', {
-        error: error instanceof Error ? error.message : 'Unknown error',
+      const duration = timer.end();
+      logApiResponse(
+        'ElevenLabs STT',
+        'transcribe',
+        false,
         duration,
-      });
+        error instanceof Error ? error : new Error('Unknown error')
+      );
 
       // Handle specific error cases
       if (error instanceof Error) {
