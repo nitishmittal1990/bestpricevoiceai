@@ -69,19 +69,90 @@ Start the production server:
 npm start
 ```
 
+## API Server
+
+The Voice Price Comparison Agent provides a REST API for voice-based product price comparison.
+
+### Quick Start
+
+1. Start the server:
+```bash
+npm run dev
+```
+
+2. The API will be available at `http://localhost:3000`
+
+### API Endpoints
+
+- `POST /api/session/start` - Start a new conversation session
+- `POST /api/session/:id/message` - Send audio message (accepts audio file, returns audio response)
+- `GET /api/session/:id/state` - Get current session state
+- `DELETE /api/session/:id` - End a session
+
+### Example Usage
+
+```bash
+# Start a session
+SESSION_ID=$(curl -X POST http://localhost:3000/api/session/start | jq -r '.sessionId')
+
+# Send audio query
+curl -X POST http://localhost:3000/api/session/$SESSION_ID/message \
+  -F "audio=@query.mp3" \
+  --output response.mp3
+
+# Get session state
+curl -X GET http://localhost:3000/api/session/$SESSION_ID/state
+
+# End session
+curl -X DELETE http://localhost:3000/api/session/$SESSION_ID
+```
+
+### Security
+
+Optional API key authentication can be enabled by setting the `API_KEY` environment variable:
+
+```env
+API_KEY=your_secret_api_key_here
+```
+
+When enabled, include the API key in requests:
+```bash
+curl -H "Authorization: Bearer your_secret_api_key_here" ...
+```
+
+### Rate Limiting
+
+- Session creation: 10 per IP per 15 minutes
+- Message sending: 60 per session per minute
+- General API: 100 requests per IP per 15 minutes
+
+### Documentation
+
+- Full API documentation: [docs/API.md](docs/API.md)
+- Implementation details: [docs/API_SERVER_IMPLEMENTATION.md](docs/API_SERVER_IMPLEMENTATION.md)
+- Example client: [examples/api-client-demo.ts](examples/api-client-demo.ts)
+
 ## Project Structure
 
 ```
 src/
 ├── config/          # Configuration and environment setup
+├── middleware/      # Express middleware (auth, rate limiting, validation)
 ├── models/          # TypeScript interfaces and data models
+├── routes/          # API route handlers
+│   └── session.routes.ts  # Session management endpoints
 ├── services/        # Service implementations (STT, TTS, LLM, Search)
-│   ├── STTService.ts    # Speech-to-Text using ElevenLabs
-│   ├── TTSService.ts    # Text-to-Speech using ElevenLabs
-│   └── __tests__/       # Service unit tests
+│   ├── STTService.ts           # Speech-to-Text using ElevenLabs
+│   ├── TTSService.ts           # Text-to-Speech using ElevenLabs
+│   ├── TTSCache.ts             # TTS response caching
+│   ├── LLMAgent.ts             # LLM-based conversation agent
+│   ├── SearchTool.ts           # Product search and price comparison
+│   ├── StateManager.ts         # Session state management
+│   ├── ConversationOrchestrator.ts  # Main orchestration logic
+│   └── __tests__/              # Service unit tests
 ├── types/           # TypeScript type definitions
 ├── utils/           # Utility functions and helpers
-└── index.ts         # Application entry point
+└── index.ts         # Application entry point (Express server)
 ```
 
 ## Services

@@ -148,22 +148,22 @@
     - Clean up session on exit
     - _Requirements: 7.4, 7.5_
 
-- [ ] 9. Create API endpoints and server
-  - [ ] 9.1 Set up Express server with routes
+- [x] 9. Create API endpoints and server
+  - [x] 9.1 Set up Express server with routes
     - Create POST /api/session/start endpoint
     - Create POST /api/session/:id/message endpoint (accepts audio)
     - Create DELETE /api/session/:id endpoint
     - Create GET /api/session/:id/state endpoint
     - _Requirements: All requirements_
   
-  - [ ] 9.2 Implement request/response handling
+  - [x] 9.2 Implement request/response handling
     - Add multipart form data handling for audio uploads
     - Implement audio format validation
     - Return audio responses with proper content-type
     - Add request logging and error responses
     - _Requirements: 1.1, 5.1_
   
-  - [ ] 9.3 Add middleware for security and validation
+  - [x] 9.3 Add middleware for security and validation
     - Implement API key validation
     - Add rate limiting per session
     - Add request size limits for audio uploads
