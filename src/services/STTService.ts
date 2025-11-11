@@ -36,7 +36,7 @@ export class STTService {
     });
 
     try {
-      logApiCall('ElevenLabs STT', 'transcribe', {
+      logApiCall('OpenAI Whisper', 'transcribe', {
         bufferSize: audioBuffer.length,
         options,
       });
@@ -55,34 +55,24 @@ export class STTService {
         throw new Error('Unsupported audio format. Please use WAV, MP3, WebM, OGG, FLAC, M4A, MP4, MPEG, or MPGA.');
       }
 
-      // Convert buffer to readable stream for ElevenLabs API
-      const audioStream = Readable.from(audioBuffer);
-
-      // Call ElevenLabs Speech-to-Text API
-      const response = await this.client.speechToText.convert({
-        file: audioStream,
-        modelId: options?.model || 'scribe_v1',
-        languageCode: options?.language,
-        enableLogging: false,
+      // Create a File object from the buffer for OpenAI API
+      const audioFile = new File([audioBuffer], `audio.${format}`, {
+        type: `audio/${format}`,
       });
 
-      // Handle response - ElevenLabs returns different response types
-      // For synchronous requests, we get SpeechToTextChunkResponseModel
-      let text = '';
-      let languageCode = options?.language || 'en';
-      let confidence = 0.85; // Default confidence
+      // Call OpenAI Whisper API
+      const response = await this.client.audio.transcriptions.create({
+        file: audioFile,
+        model: options?.model || 'whisper-1',
+        language: options?.language,
+        response_format: 'verbose_json',
+      });
 
-      if ('text' in response && typeof response.text === 'string') {
-        text = response.text;
-        if ('languageCode' in response) {
-          languageCode = response.languageCode as string;
-        }
-        if ('languageProbability' in response && typeof response.languageProbability === 'number') {
-          confidence = response.languageProbability;
-        }
-      } else {
-        throw new Error('Unexpected response format from ElevenLabs API');
-      }
+      // Extract transcription result from OpenAI response
+      const text = response.text || '';
+      const languageCode = response.language || options?.language || 'en';
+      // OpenAI doesn't provide confidence, so we estimate based on text quality
+      const confidence = 0.85; // Default confidence for Whisper
       
       if (!text || text.trim().length === 0) {
         logger.warn('Transcription returned empty text');
@@ -101,7 +91,7 @@ export class STTService {
         duration,
       };
 
-      logApiResponse('ElevenLabs STT', 'transcribe', true, duration);
+      logApiResponse('OpenAI Whisper', 'transcribe', true, duration);
       logger.info('Transcription completed successfully', {
         textLength: result.text.length,
         confidence: result.confidence,
@@ -120,7 +110,7 @@ export class STTService {
     } catch (error) {
       const duration = timer.end();
       logApiResponse(
-        'ElevenLabs STT',
+        'OpenAI Whisper',
         'transcribe',
         false,
         duration,
@@ -129,13 +119,13 @@ export class STTService {
 
       // Handle specific error cases
       if (error instanceof Error) {
-        if (error.message.includes('API key')) {
-          throw new Error('Invalid ElevenLabs API key');
+        if (error.message.includes('API key') || error.message.includes('Incorrect API key')) {
+          throw new Error('Invalid OpenAI API key');
         }
-        if (error.message.includes('rate limit')) {
+        if (error.message.includes('rate limit') || error.message.includes('Rate limit')) {
           throw new Error('Rate limit exceeded. Please try again later.');
         }
-        if (error.message.includes('audio format')) {
+        if (error.message.includes('audio format') || error.message.includes('file format')) {
           throw new Error('Unsupported audio format. Please use WAV, MP3, or WebM.');
         }
       }
@@ -253,15 +243,17 @@ export class STTService {
 
   /**
    * Stream transcribe audio in real-time with chunked processing
-   * Provides lower latency by processing audio chunks as they arrive
+   * NOTE: OpenAI Whisper does not support streaming. This method is disabled.
    * @param audioStream - Readable stream of audio data
    * @param options - Transcription options
    * @returns Async iterator yielding transcription chunks
    */
   async *streamTranscribe(
-    audioStream: Readable,
-    options?: TranscribeOptions
+    _audioStream: Readable,
+    _options?: TranscribeOptions
   ): AsyncIterableIterator<TranscriptionResult> {
+    throw new Error('Streaming transcription is not supported with OpenAI Whisper');
+    /* Disabled - OpenAI Whisper doesn't support streaming
     const CHUNK_SIZE = 64 * 1024; // 64KB chunks for optimal processing
     const CHUNK_TIMEOUT = 5000; // 5 second timeout per chunk
     
@@ -354,20 +346,24 @@ export class STTService {
         `Streaming transcription failed: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
+    */ // End of disabled streaming code
   }
 
+  /* Disabled - OpenAI Whisper doesn't support streaming
   /**
    * Transcribe a single audio chunk
+   * NOTE: Disabled for OpenAI Whisper
    * @param chunkBuffer - Audio chunk buffer
    * @param options - Transcription options
    * @param chunkNumber - Chunk sequence number for logging
    * @returns Transcription result for the chunk
-   */
+   *
   private async transcribeChunk(
-    chunkBuffer: Buffer,
-    options?: TranscribeOptions,
-    chunkNumber?: number
+    _chunkBuffer: Buffer,
+    _options?: TranscribeOptions,
+    _chunkNumber?: number
   ): Promise<TranscriptionResult> {
+    throw new Error('Chunk transcription is not supported with OpenAI Whisper');
     const startTime = Date.now();
 
     try {
@@ -442,7 +438,7 @@ export class STTService {
         duration,
       };
     }
-  }
+    */ // End of disabled chunk transcription and streaming methods
 
   /**
    * Check if transcription confidence is acceptable

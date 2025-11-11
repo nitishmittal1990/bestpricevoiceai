@@ -134,7 +134,9 @@ function loadConfig(): Config {
     },
     llm: {
       provider: (getOptionalEnv('LLM_PROVIDER', 'openai') as 'anthropic' | 'openai'),
-      apiKey: process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || '',
+      apiKey: getOptionalEnv('LLM_PROVIDER', 'openai') === 'anthropic' 
+        ? (process.env.ANTHROPIC_API_KEY || '') 
+        : (process.env.OPENAI_API_KEY || ''),
       model: getOptionalEnv('LLM_MODEL', 'gpt-4o'),
       maxTokens: parseInt(getOptionalEnv('LLM_MAX_TOKENS', '1024'), 10),
       temperature: parseFloat(getOptionalEnv('LLM_TEMPERATURE', '0.7')),

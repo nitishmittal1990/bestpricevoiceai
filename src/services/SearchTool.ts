@@ -34,21 +34,21 @@ export class SearchTool {
     });
 
     try {
-      // Attempt search with SerpAPI first
-      const results = await this.searchWithSerpAPI(query);
+      // Attempt search with Tavily first (primary)
+      const results = await this.searchWithTavily(query);
       
       const duration = timer.end();
       
       if (results.length === 0) {
-        logger.warn('No results from SerpAPI, trying fallback');
-        return await this.searchWithTavily(query);
+        logger.warn('No results from Tavily, trying SerpAPI fallback');
+        return await this.searchWithSerpAPI(query);
       }
 
       logApiResponse('SearchTool', 'searchProductPrices', true, duration);
       return results;
     } catch (error) {
       const duration = timer.end();
-      logger.error('SerpAPI search failed, falling back to Tavily', { error });
+      logger.error('Tavily search failed, falling back to SerpAPI', { error });
       logApiResponse(
         'SearchTool',
         'searchProductPrices',
@@ -56,7 +56,7 @@ export class SearchTool {
         duration,
         error instanceof Error ? error : new Error('Unknown error')
       );
-      return await this.searchWithTavily(query);
+      return await this.searchWithSerpAPI(query);
     }
   }
 
@@ -304,19 +304,28 @@ export class SearchTool {
    * Construct Tavily search query
    */
   private constructTavilyQuery(query: ProductQuery): string {
-    const parts: string[] = [query.productName];
-
+    const parts: string[] = [];
+    
+    // Add brand if available
     if (query.brand) {
       parts.push(query.brand);
     }
+    
+    // Add product name
+    parts.push(query.productName);
 
+    // Add specifications
     Object.entries(query.specifications).forEach(([, value]) => {
       parts.push(`${value}`);
     });
 
-    parts.push('price India');
+    // Add search context
+    parts.push('buy online India price');
 
-    return parts.join(' ');
+    const searchQuery = parts.join(' ');
+    logger.info(`Constructed Tavily query: ${searchQuery}`);
+    
+    return searchQuery;
   }
 
   /**
@@ -328,8 +337,11 @@ export class SearchTool {
     const results: SearchResult[] = [];
 
     if (!response.results) {
+      logger.warn('No results field in Tavily response');
       return results;
     }
+
+    logger.info(`Parsing ${response.results.length} Tavily results`);
 
     for (const item of response.results) {
       try {
@@ -337,15 +349,39 @@ export class SearchTool {
         const platform = getPlatformByDomain(url.hostname);
         
         if (!platform) {
+          logger.debug(`Skipping result - domain not recognized: ${url.hostname}`);
           continue;
         }
 
-        const priceMatch = (item.content || '').match(/₹\s*([0-9,]+)/);
+        // Try multiple price patterns
+        const combinedText = `${item.title || ''} ${item.content || ''}`;
+        
+        // Pattern 1: ₹ symbol with numbers
+        let priceMatch = combinedText.match(/₹\s*([0-9,]+(?:\.\d{2})?)/);
+        
+        // Pattern 2: Rs or INR with numbers
         if (!priceMatch) {
+          priceMatch = combinedText.match(/(?:Rs\.?|INR)\s*([0-9,]+(?:\.\d{2})?)/i);
+        }
+        
+        // Pattern 3: Price: followed by numbers
+        if (!priceMatch) {
+          priceMatch = combinedText.match(/price[:\s]+([0-9,]+(?:\.\d{2})?)/i);
+        }
+
+        if (!priceMatch) {
+          logger.debug(`No price found in result: ${item.title}`);
           continue;
         }
 
         const price = parseFloat(priceMatch[1].replace(/,/g, ''));
+        
+        if (price === 0 || isNaN(price)) {
+          logger.debug(`Invalid price extracted: ${priceMatch[1]}`);
+          continue;
+        }
+
+        logger.info(`Found result: ${platform.name} - ₹${price} - ${item.title}`);
 
         results.push({
           platform: platform.name,
@@ -354,7 +390,7 @@ export class SearchTool {
           currency: 'INR',
           url: item.url,
           availability: this.determineAvailability(item.content || ''),
-          specifications: this.extractSpecifications(item.title + ' ' + item.content),
+          specifications: this.extractSpecifications(combinedText),
           matchConfidence: 0.5,
         });
       } catch (error) {
@@ -362,6 +398,7 @@ export class SearchTool {
       }
     }
 
+    logger.info(`Successfully parsed ${results.length} results from Tavily`);
     return results;
   }
 
