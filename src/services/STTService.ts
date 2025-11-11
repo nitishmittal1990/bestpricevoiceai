@@ -1,23 +1,24 @@
-import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
+import OpenAI from 'openai';
 import { config } from '../config';
 import { TranscribeOptions, TranscriptionResult } from '../types';
 import { logger, logApiCall, logApiResponse, PerformanceTimer } from '../utils/logger';
 import { Readable } from 'stream';
+import { File } from 'buffer';
 
 /**
- * Speech-to-Text Service using ElevenLabs Speech-to-Text API
+ * Speech-to-Text Service using OpenAI Whisper API
  * Handles audio transcription with support for multiple formats
  */
 export class STTService {
-  private client: ElevenLabsClient;
+  private client: OpenAI;
   private readonly MIN_CONFIDENCE_THRESHOLD = 0.7;
   private readonly SUPPORTED_FORMATS = ['wav', 'mp3', 'webm', 'ogg', 'flac', 'm4a', 'mp4', 'mpeg', 'mpga'];
 
   constructor() {
-    this.client = new ElevenLabsClient({
-      apiKey: config.elevenlabs.apiKey,
+    this.client = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY || config.llm.apiKey,
     });
-    logger.info('STTService initialized with ElevenLabs Speech-to-Text API');
+    logger.info('STTService initialized with OpenAI Whisper API');
   }
 
   /**

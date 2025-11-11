@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { config } from '../config';
 import {
   ProductQuery,
@@ -90,26 +91,33 @@ export interface ToolExecutionResult {
  * LLM Agent service for processing user messages and orchestrating tools
  */
 export class LLMAgent {
-  private client: Anthropic;
+  private anthropicClient?: Anthropic;
+  private openaiClient?: OpenAI;
+  private provider: 'anthropic' | 'openai';
   private model: string;
   private maxTokens: number;
   private temperature: number;
 
   constructor() {
-    if (config.llm.provider !== 'anthropic') {
-      throw new Error('Only Anthropic Claude is currently supported');
-    }
-
-    this.client = new Anthropic({
-      apiKey: config.llm.apiKey,
-    });
-
+    this.provider = config.llm.provider;
     this.model = config.llm.model;
     this.maxTokens = config.llm.maxTokens;
     this.temperature = config.llm.temperature;
 
+    if (this.provider === 'anthropic') {
+      this.anthropicClient = new Anthropic({
+        apiKey: config.llm.apiKey,
+      });
+    } else if (this.provider === 'openai') {
+      this.openaiClient = new OpenAI({
+        apiKey: config.llm.apiKey,
+      });
+    } else {
+      throw new Error(`Unsupported LLM provider: ${this.provider}`);
+    }
+
     logger.info('LLMAgent initialized', {
-      provider: config.llm.provider,
+      provider: this.provider,
       model: this.model,
     });
   }
@@ -144,7 +152,7 @@ Product categories you handle: laptops, phones, tablets, desktops, monitors, hea
   }
 
   /**
-   * Get tools available for function calling
+   * Get tools available for function calling (Anthropic format)
    */
   private getTools(): Tool[] {
     return [
@@ -207,6 +215,21 @@ Product categories you handle: laptops, phones, tablets, desktops, monitors, hea
   }
 
   /**
+   * Convert tools to OpenAI function format
+   */
+  private getOpenAIFunctions(): OpenAI.Chat.Completions.ChatCompletionTool[] {
+    const tools = this.getTools();
+    return tools.map(tool => ({
+      type: 'function' as const,
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.input_schema,
+      },
+    }));
+  }
+
+  /**
    * Process user message with conversation context
    */
   async processUserMessage(
@@ -218,24 +241,14 @@ Product categories you handle: laptops, phones, tablets, desktops, monitors, hea
       conversationState: context.conversationState,
     });
 
+    const providerName = this.provider === 'anthropic' ? 'Anthropic Claude' : 'OpenAI';
+    
     try {
-      logApiCall('Anthropic Claude', 'processUserMessage', {
+      logApiCall(providerName, 'processUserMessage', {
         messageLength: message.length,
         historyLength: context.history.length,
         conversationState: context.conversationState,
       });
-
-      // Build messages array for Claude
-      const messages: Anthropic.MessageParam[] = [
-        ...context.history.map((msg) => ({
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content,
-        })),
-        {
-          role: 'user' as const,
-          content: message,
-        },
-      ];
 
       // Add context about current product if available
       let systemPrompt = this.getSystemPrompt();
@@ -246,30 +259,77 @@ Product categories you handle: laptops, phones, tablets, desktops, monitors, hea
         systemPrompt += `\n\nSearch results available: ${context.searchResults.length} results found`;
       }
 
-      // Call Claude with function calling
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: this.maxTokens,
-        temperature: this.temperature,
-        system: systemPrompt,
-        messages,
-        tools: this.getTools(),
-      });
+      if (this.provider === 'anthropic') {
+        // Anthropic API call
+        const messages: Anthropic.MessageParam[] = [
+          ...context.history.map((msg) => ({
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+          })),
+          {
+            role: 'user' as const,
+            content: message,
+          },
+        ];
 
-      const duration = timer.end();
-      logApiResponse('Anthropic Claude', 'processUserMessage', true, duration);
+        const response = await this.anthropicClient!.messages.create({
+          model: this.model,
+          max_tokens: this.maxTokens,
+          temperature: this.temperature,
+          system: systemPrompt,
+          messages,
+          tools: this.getTools(),
+        });
 
-      logger.info('Received LLM response', {
-        stopReason: response.stop_reason,
-        contentBlocks: response.content.length,
-      });
+        const duration = timer.end();
+        logApiResponse(providerName, 'processUserMessage', true, duration);
 
-      // Process response
-      return this.processLLMResponse(response, context);
+        logger.info('Received LLM response', {
+          stopReason: response.stop_reason,
+          contentBlocks: response.content.length,
+        });
+
+        return this.processAnthropicResponse(response, context);
+      } else {
+        // OpenAI API call
+        const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+          {
+            role: 'system',
+            content: systemPrompt,
+          },
+          ...context.history.map((msg) => ({
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+          })),
+          {
+            role: 'user',
+            content: message,
+          },
+        ];
+
+        const response = await this.openaiClient!.chat.completions.create({
+          model: this.model,
+          max_tokens: this.maxTokens,
+          temperature: this.temperature,
+          messages,
+          tools: this.getOpenAIFunctions(),
+          tool_choice: 'auto',
+        });
+
+        const duration = timer.end();
+        logApiResponse(providerName, 'processUserMessage', true, duration);
+
+        logger.info('Received LLM response', {
+          finishReason: response.choices[0]?.finish_reason,
+          messageRole: response.choices[0]?.message.role,
+        });
+
+        return this.processOpenAIResponse(response, context);
+      }
     } catch (error) {
       const duration = timer.end();
       logApiResponse(
-        'Anthropic Claude',
+        providerName,
         'processUserMessage',
         false,
         duration,
@@ -280,9 +340,9 @@ Product categories you handle: laptops, phones, tablets, desktops, monitors, hea
   }
 
   /**
-   * Process LLM response and extract action/message
+   * Process Anthropic response and extract action/message
    */
-  private processLLMResponse(
+  private processAnthropicResponse(
     response: Anthropic.Message,
     _context: ConversationContext
   ): AgentResponse {
@@ -298,11 +358,55 @@ Product categories you handle: laptops, phones, tablets, desktops, monitors, hea
         message += block.text;
       } else if (block.type === 'tool_use') {
         // Handle tool calls
-        action = this.processToolCall(block, _context);
+        action = this.processAnthropicToolCall(block, _context);
         requiresUserInput = action.type === 'clarify';
       }
     }
 
+    return this.buildAgentResponse(message, action, requiresUserInput, updatedProduct, conversationState);
+  }
+
+  /**
+   * Process OpenAI response and extract action/message
+   */
+  private processOpenAIResponse(
+    response: OpenAI.Chat.Completions.ChatCompletion,
+    _context: ConversationContext
+  ): AgentResponse {
+    const choice = response.choices[0];
+    if (!choice) {
+      return {
+        message: 'I apologize, but I did not receive a valid response.',
+        requiresUserInput: true,
+      };
+    }
+
+    const messageContent = choice.message.content || '';
+    let action: AgentAction | undefined;
+    let requiresUserInput = true;
+    let updatedProduct: ProductQuery | undefined;
+    let conversationState: ConversationState | undefined;
+
+    // Check for tool calls
+    if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
+      const toolCall = choice.message.tool_calls[0];
+      action = this.processOpenAIToolCall(toolCall, _context);
+      requiresUserInput = action.type === 'clarify';
+    }
+
+    return this.buildAgentResponse(messageContent, action, requiresUserInput, updatedProduct, conversationState);
+  }
+
+  /**
+   * Build agent response from components
+   */
+  private buildAgentResponse(
+    message: string,
+    action: AgentAction | undefined,
+    requiresUserInput: boolean,
+    updatedProduct: ProductQuery | undefined,
+    conversationState: ConversationState | undefined
+  ): AgentResponse {
     // Determine conversation state based on action
     if (action) {
       switch (action.type) {
@@ -335,14 +439,45 @@ Product categories you handle: laptops, phones, tablets, desktops, monitors, hea
   }
 
   /**
-   * Process tool call from LLM
+   * Process Anthropic tool call
    */
-  private processToolCall(
+  private processAnthropicToolCall(
     toolUse: Anthropic.ToolUseBlock,
     _context: ConversationContext
   ): AgentAction {
     const { name, input } = toolUse;
+    return this.processToolCall(name, input as Record<string, any>);
+  }
 
+  /**
+   * Process OpenAI tool call
+   */
+  private processOpenAIToolCall(
+    toolCall: OpenAI.Chat.Completions.ChatCompletionMessageToolCall,
+    _context: ConversationContext
+  ): AgentAction {
+    // Type guard to ensure we have a function tool call
+    if (toolCall.type !== 'function' || !('function' in toolCall)) {
+      throw new Error('Invalid tool call type');
+    }
+    
+    const name = toolCall.function.name;
+    let input: Record<string, any> = {};
+    try {
+      input = JSON.parse(toolCall.function.arguments);
+    } catch (error) {
+      logger.warn('Failed to parse tool call arguments', { error, arguments: toolCall.function.arguments });
+    }
+    return this.processToolCall(name, input);
+  }
+
+  /**
+   * Process tool call from LLM (common logic)
+   */
+  private processToolCall(
+    name: string,
+    input: Record<string, any>
+  ): AgentAction {
     logger.info('Processing tool call', { toolName: name, input });
 
     switch (name) {
@@ -397,24 +532,40 @@ Respond in JSON format:
 
 Only include fields that are explicitly mentioned or can be clearly inferred. Use null for missing information.`;
 
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: 500,
-        temperature: 0.3, // Lower temperature for more consistent extraction
-        messages: [
-          {
-            role: 'user',
-            content: extractionPrompt,
-          },
-        ],
-      });
-
-      // Extract text response
       let responseText = '';
-      for (const block of response.content) {
-        if (block.type === 'text') {
-          responseText += block.text;
+      if (this.provider === 'anthropic') {
+        const response = await this.anthropicClient!.messages.create({
+          model: this.model,
+          max_tokens: 500,
+          temperature: 0.3, // Lower temperature for more consistent extraction
+          messages: [
+            {
+              role: 'user',
+              content: extractionPrompt,
+            },
+          ],
+        });
+
+        // Extract text response
+        for (const block of response.content) {
+          if (block.type === 'text') {
+            responseText += block.text;
+          }
         }
+      } else {
+        const response = await this.openaiClient!.chat.completions.create({
+          model: this.model,
+          max_tokens: 500,
+          temperature: 0.3, // Lower temperature for more consistent extraction
+          messages: [
+            {
+              role: 'user',
+              content: extractionPrompt,
+            },
+          ],
+        });
+
+        responseText = response.choices[0]?.message.content || '';
       }
 
       // Parse JSON response
@@ -557,24 +708,40 @@ Generate ONE clear, conversational question to ask about the MOST IMPORTANT miss
 
 Respond with just the question, nothing else.`;
 
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: 150,
-        temperature: 0.7,
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-      });
-
-      // Extract text response
       let question = '';
-      for (const block of response.content) {
-        if (block.type === 'text') {
-          question += block.text;
+      if (this.provider === 'anthropic') {
+        const response = await this.anthropicClient!.messages.create({
+          model: this.model,
+          max_tokens: 150,
+          temperature: 0.7,
+          messages: [
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+        });
+
+        // Extract text response
+        for (const block of response.content) {
+          if (block.type === 'text') {
+            question += block.text;
+          }
         }
+      } else {
+        const response = await this.openaiClient!.chat.completions.create({
+          model: this.model,
+          max_tokens: 150,
+          temperature: 0.7,
+          messages: [
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+        });
+
+        question = response.choices[0]?.message.content || '';
       }
 
       return question.trim();
@@ -777,24 +944,40 @@ Guidelines:
 
 Generate only the voice response, nothing else.`;
 
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: 300,
-        temperature: 0.7,
-        messages: [
-          {
-            role: 'user',
-            content: summaryPrompt,
-          },
-        ],
-      });
-
-      // Extract text response
       let summary = '';
-      for (const block of response.content) {
-        if (block.type === 'text') {
-          summary += block.text;
+      if (this.provider === 'anthropic') {
+        const response = await this.anthropicClient!.messages.create({
+          model: this.model,
+          max_tokens: 300,
+          temperature: 0.7,
+          messages: [
+            {
+              role: 'user',
+              content: summaryPrompt,
+            },
+          ],
+        });
+
+        // Extract text response
+        for (const block of response.content) {
+          if (block.type === 'text') {
+            summary += block.text;
+          }
         }
+      } else {
+        const response = await this.openaiClient!.chat.completions.create({
+          model: this.model,
+          max_tokens: 300,
+          temperature: 0.7,
+          messages: [
+            {
+              role: 'user',
+              content: summaryPrompt,
+            },
+          ],
+        });
+
+        summary = response.choices[0]?.message.content || '';
       }
 
       logger.info('Generated comparison summary', {

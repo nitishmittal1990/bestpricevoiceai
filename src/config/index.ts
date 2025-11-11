@@ -133,9 +133,9 @@ function loadConfig(): Config {
       sttModel: getOptionalEnv('STT_MODEL', 'whisper-1'),
     },
     llm: {
-      provider: (getOptionalEnv('LLM_PROVIDER', 'anthropic') as 'anthropic' | 'openai'),
+      provider: (getOptionalEnv('LLM_PROVIDER', 'openai') as 'anthropic' | 'openai'),
       apiKey: process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY || '',
-      model: getOptionalEnv('LLM_MODEL', 'claude-3-5-sonnet-20241022'),
+      model: getOptionalEnv('LLM_MODEL', 'gpt-4o'),
       maxTokens: parseInt(getOptionalEnv('LLM_MAX_TOKENS', '1024'), 10),
       temperature: parseFloat(getOptionalEnv('LLM_TEMPERATURE', '0.7')),
     },
