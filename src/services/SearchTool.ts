@@ -448,11 +448,18 @@ export class SearchTool {
     requiredSpecs: Specifications,
     minConfidence: number = 0.6
   ): SearchResult[] {
+    // If no specifications are required, accept all results (set confidence to 1.0)
+    const hasRequiredSpecs = Object.keys(requiredSpecs).length > 0;
+    
     // Update match confidence for all results
     const resultsWithConfidence = results.map(result => ({
       ...result,
-      matchConfidence: this.verifySpecificationMatch(result, requiredSpecs),
+      matchConfidence: hasRequiredSpecs 
+        ? this.verifySpecificationMatch(result, requiredSpecs)
+        : 1.0, // Accept all results when no specs are specified
     }));
+
+    logger.info(`Filtering results: ${resultsWithConfidence.length} total, hasRequiredSpecs: ${hasRequiredSpecs}, minConfidence: ${minConfidence}`);
 
     // Filter by confidence and availability
     const filtered = resultsWithConfidence.filter(
@@ -460,6 +467,8 @@ export class SearchTool {
         result.matchConfidence >= minConfidence &&
         result.availability !== 'out_of_stock'
     );
+    
+    logger.info(`After filtering: ${filtered.length} results remaining`);
 
     // Group by platform and keep lowest price per platform
     const platformMap = new Map<string, SearchResult>();
